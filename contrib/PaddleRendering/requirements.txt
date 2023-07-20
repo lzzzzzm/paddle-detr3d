@@ -1,0 +1,13 @@
+colorlog
+filelock
+numpy
+imageio==2.21.1
+opencv-python
+pyyaml
+pillow
+rarfile
+visualdl
+easydict
+scipy==1.7.0
+PyMCubes==0.1.2
+trimesh==3.9.8
