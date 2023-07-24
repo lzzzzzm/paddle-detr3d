@@ -20,3 +20,4 @@ from .point_head import PointHeadSimple
 from .target_assigner import *
 from .cape_dn_head import CAPETemporalDNHead
 from .bevdet_centerhead import CenterHeadMatch
+from .detr3d_head import Detr3DHead

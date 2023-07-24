@@ -47,15 +47,6 @@ class DeformableConvV2(nn.Layer):
 
         offset_bias_attr = ParamAttr(initializer=Constant(0.))
 
-        self.conv_offset = nn.Conv2D(
-            in_channels,
-            3 * kernel_size**2,
-            kernel_size,
-            stride=stride,
-            padding=(kernel_size - 1) // 2,
-            weight_attr=ParamAttr(initializer=Constant(0.0)),
-            bias_attr=offset_bias_attr)
-
         self.conv_dcn = paddle.vision.ops.DeformConv2D(
             in_channels,
             out_channels,
@@ -67,6 +58,15 @@ class DeformableConvV2(nn.Layer):
             groups=groups,
             weight_attr=weight_attr,
             bias_attr=bias_attr)
+
+        self.conv_offset = nn.Conv2D(
+            in_channels,
+            3 * kernel_size**2,
+            kernel_size,
+            stride=stride,
+            padding=(kernel_size - 1) // 2,
+            weight_attr=ParamAttr(initializer=Constant(0.0)),
+            bias_attr=offset_bias_attr)
 
     def forward(self, x):
         offset_mask = self.conv_offset(x)

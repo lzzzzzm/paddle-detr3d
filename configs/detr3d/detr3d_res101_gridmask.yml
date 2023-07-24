@@ -1,0 +1,149 @@
+batch_size: 1
+epochs: 24
+
+train_dataset:
+  type: NuscenesMVDataset
+  dataset_root: data/nuscenes/
+  ann_file: data/nuscenes/petr_nuscenes_annotation_train.pkl
+  mode: train
+  class_names: [
+            'car', 'truck', 'construction_vehicle', 'bus', 'trailer',
+            'barrier', 'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone'
+        ]
+  transforms:
+    - type: LoadMultiViewImageFromFiles
+      to_float32: True
+    - type: LoadAnnotations3D
+      with_bbox_3d: True
+      with_label_3d: True
+    - type: SampleRangeFilter
+      point_cloud_range: [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+    - type: SampleNameFilter
+      classes: [
+            'car', 'truck', 'construction_vehicle', 'bus', 'trailer',
+            'barrier', 'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone'
+        ]
+    - type: NormalizeMultiviewImage
+      mean: [103.530, 116.280, 123.675]
+      std: [1.0, 1.0, 1.0]
+    - type: PadMultiViewImage
+      size_divisor: 32
+    - type: SampleFilerByKey
+      keys: ['gt_bboxes_3d', 'gt_labels_3d', 'img']
+
+val_dataset:
+  type: NuscenesMVDataset
+  dataset_root: data/nuscenes/
+  ann_file: data/nuscenes/petr_nuscenes_annotation_val.pkl
+  mode: mini_val
+  class_names: ['car', 'truck', 'construction_vehicle', 'bus', 'trailer',
+                    'barrier', 'motorcycle', 'bicycle', 'pedestrian',
+                    'traffic_cone']
+  transforms:
+    - type: LoadMultiViewImageFromFiles
+      to_float32: True
+    - type: NormalizeMultiviewImage
+      mean: [103.530, 116.280, 123.675]
+      std: [1.0, 1.0, 1.0]
+    - type: PadMultiViewImage
+      size_divisor: 32
+    - type: SampleFilerByKey
+      keys: ['img']
+
+model:
+  type: Detr3D
+  use_grid_mask: True
+  img_backbone:
+    type: MMResNet
+    depth: 101
+    num_stages: 4
+    out_indices: [0, 1, 2, 3]
+    frozen_stages: 1
+    norm_cfg:
+      type_name: 'BatchNorm2D'
+      requires_grad: False
+    norm_eval: True
+    style: 'caffe'
+    dcn:
+      type_name: 'DeformConv2D'
+      deformable_groups: 1
+    stage_with_dcn: [False, False, True, True]
+  img_neck:
+    type: MMFPN
+    in_channels: [256, 512, 1024, 2048]
+    out_channels: 256
+    start_level: 1
+    add_extra_convs: 'on_output'
+    num_outs: 4
+    relu_before_extra_convs: True
+  pts_bbox_head:
+    type: Detr3DHead
+    num_query: 900
+    num_classes: 10
+    in_channels: 256
+    sync_cls_avg_factor: True
+    with_box_refine: True
+    as_two_stage: False
+    pc_range: [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+    transformer:
+      type: Detr3DTransformer
+      decoder:
+        type: Detr3DTransformerDecoder
+        num_layers: 6
+        return_intermediate: True
+        transformerlayers:
+          type: DetrTransformerDecoderLayer
+          attn_cfgs: [
+            {
+              type_name: 'MultiheadAttention',
+              embed_dims: 256,
+              num_heads: 8,
+              dropout: 0.1
+            },
+            {
+              type_name: 'Detr3DCrossAtten',
+              pc_range: [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0],
+              embed_dims: 256,
+              num_points: 1
+            }
+          ]
+          feedforward_channels: 512
+          ffn_dropout: 0.1
+          operation_order: ['self_attn', 'norm', 'cross_attn', 'norm', 'ffn', 'norm']
+    bbox_coder:
+      type: NMSFreeCoder
+      post_center_range: [-61.2, -61.2, -10.0, 61.2, 61.2, 10.0]
+      point_cloud_range: [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+      max_num: 300
+      voxel_size: [0.2, 0.2, 8]
+      num_classes: 10
+    loss_cls:
+      type: WeightedFocalLoss
+      gamma: 2.0
+      alpha: 0.25
+      loss_weight: 2.0
+      reduction: sum
+      use_sigmoid: True
+    loss_bbox:
+      type: WeightedL1Loss
+      loss_weight: 0.25
+      reduction: sum
+
+
+optimizer:
+  type: AdamW
+  weight_decay: 0.01
+  grad_clip:
+    type: ClipGradByGlobalNorm
+    clip_norm: 35
+
+lr_scheduler:
+  type: LinearWarmup
+  learning_rate:
+    type: CosineAnnealingDecay
+    learning_rate: 0.0002
+    T_max: 84408 # 3517 * 24e
+    eta_min: 0.0000002
+  warmup_steps: 500
+  start_lr: 0.0
+  end_lr: 0.0002

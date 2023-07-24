@@ -22,3 +22,4 @@ from .positional_encoding import SinePositionalEncoding3D
 from .pyramid_pool import *
 from .normalization import *
 from .cape_transformer import CrossAttention, CAPETransformer, CrossViewAttention
+from .detr3d_transformer import (Detr3DTransformer, Detr3DTransformerDecoder, Detr3DCrossAtten)

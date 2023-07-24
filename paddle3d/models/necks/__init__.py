@@ -20,3 +20,4 @@ from .second_fpn import *
 from .fpn import *
 from .custom_fpn import CustomFPN
 from .lss_fpn import FPN_LSS
+from .mm_fpn import MMFPN
