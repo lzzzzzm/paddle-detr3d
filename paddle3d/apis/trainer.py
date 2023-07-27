@@ -31,6 +31,20 @@ from paddle3d.utils.timer import Timer
 from paddle3d.utils.profiler import add_profiler_step
 from paddle3d.utils.ema import ModelEMA
 
+# add to save var
+import pickle
+
+def save_variable(v,filename):
+    f=open(filename,'wb')
+    pickle.dump(v,f)
+    f.close()
+    return filename
+
+def load_variavle(filename):
+   f=open(filename,'rb')
+   r=pickle.load(f)
+   f.close()
+   return r
 
 def default_dataloader_build_fn(**kwargs) -> paddle.io.DataLoader:
     """
@@ -308,6 +322,13 @@ class Trainer:
         while self.cur_iter < self.iters:
 
             for sample in self.train_dataloader:
+                # if sample['meta'][0]['filename'][0] == 'data/nuscenes/samples/CAM_FRONT/n015-2018-11-21-19-38-26+0800__CAM_FRONT__1542800382862460.jpg':
+                #     paddle.save(sample['img'], 'save_var/img.pdtensor')
+                #     paddle.save(sample['gt_bboxes_3d'], 'save_var/gt_bboxes_3d.pdtensor')
+                #     paddle.save(sample['gt_labels_3d'], 'save_var/gt_labels_3d.pdtensor')
+                #     paddle.save(sample['meta'][0]['lidar2img'], 'save_var/lidar2img.pdtensor')
+                # else:
+                #     continue
                 if self.cur_iter == 1 and self.do_bind and int(
                         os.environ.get('FLAGS_selected_gpus', 0)) == 0:
                     test_cmd = "j=0 | j=$(( $j + 1 ))"

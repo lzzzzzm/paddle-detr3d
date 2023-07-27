@@ -77,7 +77,9 @@ class Detr3DHead(nn.Layer):
                  num_reg_fcs=2,
                  code_weights=None,
                  loss_cls=None,
+                 loss_bbox=None,
                  pc_range=None,
+                 sync_cls_avg_factor=None,
                  **kwargs):
         self.with_box_refine = with_box_refine
         self.as_two_stage = as_two_stage
@@ -86,7 +88,11 @@ class Detr3DHead(nn.Layer):
         self.embed_dims = embed_dims
         self.num_query = num_query
         self.pc_range = pc_range
+        self.num_classes = num_classes
+        self.sync_cls_avg_factor = sync_cls_avg_factor
+        self.bg_cls_weight = 0
         super(Detr3DHead, self).__init__()
+        self.pd_eps = paddle.to_tensor(np.finfo('float32').eps)
 
         if self.as_two_stage:
             transformer['as_two_stage'] = self.as_two_stage
@@ -112,6 +118,7 @@ class Detr3DHead(nn.Layer):
         self.bbox_coder = bbox_coder
         self.transformer = transformer
         self.loss_cls = loss_cls
+        self.loss_bbox = loss_bbox
         if self.loss_cls.use_sigmoid:
             self.cls_out_channels = num_classes
         else:
@@ -248,7 +255,7 @@ class Detr3DHead(nn.Layer):
                 - neg_inds (Tensor): Sampled negative indices for each image.
         """
 
-        num_bboxes = bbox_pred.size(0)
+        num_bboxes = bbox_pred.shape[0]
         # assigner and sampler
         assign_result = self.assigner.assign(bbox_pred, cls_score, gt_bboxes,
                                              gt_labels, gt_bboxes_ignore)
@@ -258,12 +265,11 @@ class Detr3DHead(nn.Layer):
         neg_inds = sampling_result.neg_inds
 
         # label targets
-        labels = gt_bboxes.new_full((num_bboxes,),
-                                    self.num_classes,
-                                    dtype='int64')
+        # label targets
+        labels = paddle.full((num_bboxes,), self.num_classes, dtype='int64')
 
         labels[pos_inds] = gt_labels[sampling_result.pos_assigned_gt_inds]
-        label_weights = gt_bboxes.new_ones(num_bboxes)
+        label_weights = paddle.ones([num_bboxes])
 
         # bbox targets
         bbox_targets = paddle.zeros_like(bbox_pred)[..., :9]
@@ -350,7 +356,7 @@ class Detr3DHead(nn.Layer):
             dict[str, Tensor]: A dictionary of loss components for outputs from
                 a single decoder layer.
         """
-        num_imgs = cls_scores.size(0)
+        num_imgs = cls_scores.shape[0]
         cls_scores_list = [cls_scores[i] for i in range(num_imgs)]
         bbox_preds_list = [bbox_preds[i] for i in range(num_imgs)]
         cls_reg_targets = self.get_targets(cls_scores_list, bbox_preds_list,
@@ -364,7 +370,7 @@ class Detr3DHead(nn.Layer):
         bbox_weights = paddle.concat(bbox_weights_list, 0)
 
         # classification loss
-        cls_scores = cls_scores.reshape(-1, self.cls_out_channels)
+        cls_scores = cls_scores.reshape([-1, self.cls_out_channels])
         # construct weighted avg_factor to match with the official DETR repo
         cls_avg_factor = num_total_pos * 1.0 + \
                          num_total_neg * self.bg_cls_weight
@@ -387,10 +393,11 @@ class Detr3DHead(nn.Layer):
         # paddle.all
         isnotnan = paddle.isfinite(normalized_bbox_targets).all(axis=-1)
         bbox_weights = bbox_weights * self.code_weights
-
+        # bbox_weights[:, 6:
+        #                 8] = 0  ###dn alaways reduce the mAOE, which is useless when training for a long time.
         loss_bbox = self.loss_bbox(
-            bbox_preds[isnotnan, :10], normalized_bbox_targets[isnotnan, :10], bbox_weights[isnotnan, :10],
-            avg_factor=num_total_pos)
+            bbox_preds[isnotnan], normalized_bbox_targets[isnotnan],
+            bbox_weights[isnotnan]) / (num_total_pos + self.pd_eps)
 
         loss_cls = nan_to_num(loss_cls)
         loss_bbox = nan_to_num(loss_bbox)
@@ -445,7 +452,7 @@ class Detr3DHead(nn.Layer):
             return gravity_center
 
         num_dec_layers = len(all_cls_scores)
-        device = gt_labels_list[0].device
+
         gt_bboxes_list = [
             paddle.concat((paddle.to_tensor(get_gravity_center(gt_bboxes)),
                            paddle.to_tensor(gt_bboxes[:, 3:])),

@@ -37,9 +37,25 @@ __all__ = [
     "RandomObjectPerturb", "ConvertBoxFormat", "ResizeShortestEdge",
     "RandomContrast", "RandomBrightness", "RandomSaturation",
     "ToVisionBasedBox", "PhotoMetricDistortionMultiViewImage",
-    "RandomScaleImageMultiViewImage"
+    "RandomScaleImageMultiViewImage", 'ResizeMultiViewImage'
 ]
 
+@manager.TRANSFORMS.add_component
+class ResizeMultiViewImage(TransformABC):
+    """
+    Note:
+        If the inputs are pixel indices, they are flipped by `(W - 1 - x, H - 1 - y)`.
+        If the inputs are floating point coordinates, they are flipped by `(W - x, H - y)`.
+    """
+
+    def __init__(self, size):
+        self.size = size
+
+    def __call__(self, sample: Sample):
+        resize_img = [cv2.resize(img, self.size) for img in sample['img']]
+        sample['img'] = resize_img
+        sample['img_shape'] = [img.shape for img in resize_img]
+        return sample
 
 @manager.TRANSFORMS.add_component
 class RandomHorizontalFlip(TransformABC):

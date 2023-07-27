@@ -13,6 +13,7 @@ train_dataset:
   transforms:
     - type: LoadMultiViewImageFromFiles
       to_float32: True
+#    - type: PhotoMetricDistortionMultiViewImage
     - type: LoadAnnotations3D
       with_bbox_3d: True
       with_label_3d: True
@@ -28,6 +29,8 @@ train_dataset:
       std: [1.0, 1.0, 1.0]
     - type: PadMultiViewImage
       size_divisor: 32
+    - type: ResizeMultiViewImage
+      size: [256, 256]
     - type: SampleFilerByKey
       keys: ['gt_bboxes_3d', 'gt_labels_3d', 'img']
 
@@ -52,7 +55,7 @@ val_dataset:
 
 model:
   type: Detr3D
-  use_grid_mask: True
+  use_grid_mask: False
   img_backbone:
     type: MMResNet
     depth: 101
@@ -98,17 +101,18 @@ model:
               type_name: 'MultiheadAttention',
               embed_dims: 256,
               num_heads: 8,
-              dropout: 0.1
+              dropout: 0.0
             },
             {
               type_name: 'Detr3DCrossAtten',
               pc_range: [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0],
               embed_dims: 256,
-              num_points: 1
+              num_points: 1,
+              dropout: 0.0
             }
           ]
           feedforward_channels: 512
-          ffn_dropout: 0.1
+          ffn_dropout: 0.0
           operation_order: ['self_attn', 'norm', 'cross_attn', 'norm', 'ffn', 'norm']
     bbox_coder:
       type: NMSFreeCoder

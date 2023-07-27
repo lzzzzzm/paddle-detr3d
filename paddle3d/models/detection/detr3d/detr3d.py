@@ -34,6 +34,20 @@ from paddle3d.sample import Sample, SampleMeta
 from paddle3d.utils import dtype2float32
 from paddle3d.models.backbones.vovnetcp import _OSA_layer
 
+# add to save var
+import pickle
+
+def save_variable(v,filename):
+    f=open(filename,'wb')
+    pickle.dump(v,f)
+    f.close()
+    return filename
+
+def load_variavle(filename):
+   f=open(filename,'rb')
+   r=pickle.load(f)
+   f.close()
+   return r
 
 class GridMask(nn.Layer):
     def __init__(self,
@@ -142,8 +156,7 @@ class Detr3D(BaseMultiViewModel):
         self.pts_neck = pts_neck
         self.img_roi_head = img_roi_head
         self.img_rpn_head = img_rpn_head
-        if use_grid_mask:
-            self.use_grid_mask = use_grid_mask
+        self.use_grid_mask = use_grid_mask
 
 
     def extract_img_feat(self, img, img_metas=None):
@@ -215,14 +228,21 @@ class Detr3D(BaseMultiViewModel):
         outs = self.pts_bbox_head(pts_feats, img_metas)
         loss_inputs = [gt_bboxes_3d, gt_labels_3d, outs]
         losses = self.pts_bbox_head.loss(*loss_inputs)
+
         return losses
 
     def train_forward(self,
+                      samples=None,
+                      points=None,
                       img_metas=None,
                       gt_bboxes_3d=None,
                       gt_labels_3d=None,
+                      gt_labels=None,
+                      gt_bboxes=None,
                       img=None,
-                      gt_bboxes_ignore=None):
+                      proposals=None,
+                      gt_bboxes_ignore=None,
+                      img_mask=None):
         """Forward training function.
         Args:
             points (list[torch.Tensor], optional): Points of each sample.
@@ -246,13 +266,29 @@ class Detr3D(BaseMultiViewModel):
         Returns:
             dict: Losses of different branches.
         """
+        self.img_backbone.train()
+
+        if samples is not None:
+            img_metas = samples['meta']
+            img = samples['img']
+            gt_labels_3d = samples['gt_labels_3d']
+            gt_bboxes_3d = samples['gt_bboxes_3d']
+
+        img = paddle.load('save_var/img.pdtensor')
+        gt_bboxes_3d = paddle.load('save_var/gt_bboxes_3d.pdtensor')
+        gt_labels_3d = paddle.load('save_var/gt_labels_3d.pdtensor')
+        img_metas[0]['gt_bboxes_3d'] = gt_bboxes_3d
+        img_metas[0]['gt_labels_3d'] = gt_labels_3d
+        img_metas[0]['img'] = img
+        img_metas[0]['lidar2img'] = paddle.load('save_var/lidar2img.pdtensor')
+
         img_feats = self.extract_feat(img=img, img_metas=img_metas)
         losses = dict()
         losses_pts = self.forward_pts_train(img_feats, gt_bboxes_3d,
                                             gt_labels_3d, img_metas,
                                             gt_bboxes_ignore)
         losses.update(losses_pts)
-        return losses
+        return dict(loss=losses)
 
     def test_forward(self, samples, img=None, **kwargs):
         img_metas = samples['meta']
