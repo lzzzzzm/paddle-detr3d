@@ -407,20 +407,21 @@ def feature_sampling(mlvl_feats, reference_points, pc_range, img_metas):
     mask = (reference_points_cam[..., 2:3] > eps)
     reference_points_cam = reference_points_cam[..., 0:2] / paddle.maximum(
         reference_points_cam[..., 2:3], paddle.ones_like(reference_points_cam[..., 2:3])*eps)
-    reference_points_cam[..., 0] /= img_metas[0]['input_shape'][1]
-    reference_points_cam[..., 1] /= img_metas[0]['input_shape'][0]
-    reference_points_cam = (reference_points_cam - 0.5) * 2
-    mask = (mask & (reference_points_cam[..., 0:1] > -1.0)
-                 & (reference_points_cam[..., 0:1] < 1.0)
-                 & (reference_points_cam[..., 1:2] > -1.0)
-                 & (reference_points_cam[..., 1:2] < 1.0))
+    reference_points_cam_clone = reference_points_cam.clone()
+    reference_points_cam_clone[..., 0] /= img_metas[0]['input_shape'][1]
+    reference_points_cam_clone[..., 1] /= img_metas[0]['input_shape'][0]
+    reference_points_cam_clone = (reference_points_cam_clone - 0.5) * 2
+    mask = (mask & (reference_points_cam_clone[..., 0:1] > -1.0)
+                 & (reference_points_cam_clone[..., 0:1] < 1.0)
+                 & (reference_points_cam_clone[..., 1:2] > -1.0)
+                 & (reference_points_cam_clone[..., 1:2] < 1.0))
     mask = mask.reshape([B, num_cam, 1, num_query, 1, 1]).transpose([0, 2, 3, 1, 4, 5])
     # mask = nan_to_num(mask)
     sampled_feats = []
     for lvl, feat in enumerate(mlvl_feats):
         B, N, C, H, W = feat.shape
         feat = feat.reshape([B*N, C, H, W])
-        reference_points_cam_lvl = reference_points_cam.reshape([B*N, num_query, 1, 2])
+        reference_points_cam_lvl = reference_points_cam_clone.reshape([B*N, num_query, 1, 2])
         sampled_feat = F.grid_sample(feat, reference_points_cam_lvl, align_corners=False)
         sampled_feat = sampled_feat.reshape([B, N, C, num_query, 1]).transpose([0, 2, 3, 1, 4])
         sampled_feats.append(sampled_feat)
